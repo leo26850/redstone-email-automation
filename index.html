@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>RED-429 — Lead-Form Auto-Reply Automation · Redstone Manufacturing</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --ink: #1a1a1a; --muted: #6b6b6b;
+    --accent: #b91c1c; --accent-soft: #fef2f2; --line: #e5e5e0;
+    --code-bg: #f4f4f2; --ok: #15803d; --warn: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --card: #1e1e1e; --ink: #ececec; --muted: #9a9a9a;
+      --accent: #f87171; --accent-soft: #2a1717; --line: #333;
+      --code-bg: #262626; --ok: #4ade80; --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 20px 96px; }
+  header { border-bottom: 3px solid var(--accent); padding-bottom: 24px; margin-bottom: 40px; }
+  .kicker { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 8px 0 12px; }
+  .meta { color: var(--muted); font-size: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+  .badge.review { background: var(--accent-soft); color: var(--accent); }
+  h2 { font-size: 23px; margin: 48px 0 12px; padding-top: 8px; }
+  h2 .num { color: var(--accent); margin-right: 8px; }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 5px 0; }
+  strong { font-weight: 650; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 8px 12px; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 650; }
+  .scroll { overflow-x: auto; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-size: .88em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; margin: 18px 0; }
+  .email-mock { font-size: 15px; }
+  .email-mock .hdr { color: var(--muted); font-size: 13.5px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
+  .email-mock .hdr b { color: var(--ink); }
+  .email-mock blockquote { border-left: 3px solid var(--line); margin: 12px 0 0; padding: 4px 0 4px 14px; color: var(--muted); font-size: 13.5px; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 18px 0; }
+  .callout.open-item { border-color: var(--warn); background: transparent; border: 1px solid var(--line); border-left: 4px solid var(--warn); }
+  .ok { color: var(--ok); font-weight: 650; }
+  .warn { color: var(--warn); font-weight: 650; }
+  details { border: 1px solid var(--line); border-radius: 8px; margin: 16px 0; background: var(--card); }
+  details summary { cursor: pointer; padding: 12px 18px; font-weight: 650; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+  details pre { border: none; margin: 0; border-radius: 0 0 8px 8px; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+  .redact { background: var(--code-bg); border-radius: 3px; padding: 0 4px; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Redstone Manufacturing · RED-429</div>
+  <h1>Lead-Form Auto-Reply Automation</h1>
+  <div class="meta">
+    <span class="badge review">Draft for review</span>
+    <span>Prepared by KAMG · 2026-07-14</span>
+    <span>Client draft due: <strong>Fri 2026-07-17</strong></span>
+  </div>
+</header>
+
+<p><strong>In one sentence:</strong> every enterprise-domain lead-form submission automatically receives Manuel's personal reply within ~5 minutes — from his real mailbox, with Eric and Alec CC'd, the submission quoted, a booking link included, and the email logged in HubSpot — while free-mail submissions are silently skipped and any lead reply that misses Alec is auto-forwarded to him.</p>
+
+<h2><span class="num">1</span>The brief</h2>
+<p>From Eric's email of 2026-07-09. Eight requirements:</p>
+<ol>
+  <li>Qualify the lead — auto-reply only for <strong>enterprise domains</strong> (no gmail etc.)</li>
+  <li>Reply from <strong>Manuel's email account</strong></li>
+  <li>Manuel's <strong>exact template/wording</strong> from the Teledyne thread, with <strong>Alec's calendar link</strong> added at the end</li>
+  <li><strong>CC Eric and Alec</strong> on the auto-reply</li>
+  <li>Replies that go only to Manuel <strong>auto-forward to Alec</strong> (if the lead doesn't reply-all)</li>
+  <li>Email <strong>logged in HubSpot</strong> for the lead</li>
+  <li><strong>Include the lead-form submission</strong> in the email, like Manuel did</li>
+  <li>Subject line: <strong>"XXXX with Redstone Manufacturing"</strong>, where XXXX = the manufacturing process from the form</li>
+</ol>
+
+<h2><span class="num">2</span>Architecture decision</h2>
+<p><strong>One Google Apps Script project owned by <code>manuel@redstonemanufacturing.com</code>.</strong> No servers, no paid middleware, no website changes.</p>
+<ul>
+  <li><strong>Runs as Manuel</strong> — sends are genuine emails from his mailbox: real threading, real CCs, lands in his Sent folder. Requirement 2 comes for free.</li>
+  <li><strong>The notification email is the trigger</strong> — form submissions already land in Gmail, so the script polls the inbox every 5 minutes. No webhooks, no HubSpot-tier dependency, no website changes.</li>
+  <li><strong>Reply-forwarding needs mailbox access anyway</strong> — Zapier/Make and HubSpot workflows handle "forward replies in this thread" poorly; a Gmail-side script does it natively.</li>
+  <li><strong>Zero marginal cost</strong> — Workspace quotas allow ~1,500 sends/day; lead volume is nowhere near.</li>
+</ul>
+
+<h2><span class="num">3</span>System flow</h2>
+<div class="scroll"><pre>
+Form submission (website) ──► also lands in HubSpot (as today)
+        └──► notification email lands in Manuel's Gmail
+                        │
+        Time-driven trigger, every 5 min → main()
+                        │
+   ┌── processNewLeads_()
+   │   1. Gmail search: unprocessed "Tell us about your project" emails
+   │   2. Parse fields: Work Email, Name, Company, Process, Stage, Reason, Date, Phone
+   │   3. Free-mail domain?  → label lead-auto/skipped, STOP (no reply ever)
+   │   4. Send as Manuel:
+   │        To:      lead's work email
+   │        CC:      eric@ + alec@redstonemanufacturing.com
+   │        Subject: "{Process} with Redstone Manufacturing"
+   │        Body:    Manuel's verbatim template + calendar link
+   │                 + signature + form submission quoted underneath
+   │   5. Log email engagement on the HubSpot contact (private-app API)
+   │   6. Labels: notification → lead-auto/processed, sent thread → lead-auto/sent
+   │
+   └── forwardLoneReplies_()
+       Scan lead-auto/sent threads (60-day window).
+       Message FROM the lead where alec@ is NOT on To/Cc
+       → forward to Alec, dedup-tracked so nothing forwards twice.
+</pre></div>
+<p><strong>State machine &amp; audit trail = Gmail labels:</strong> <code>lead-auto/processed</code>, <code>lead-auto/skipped</code>, <code>lead-auto/sent</code>, <code>lead-auto/error</code>. Failures label the thread <code>error</code> and never auto-retry — everything is inspectable straight from Manuel's inbox.</p>
+
+<h2><span class="num">4</span>What the lead receives</h2>
+<p>Rendered example based on the original Teledyne thread (lead contact details redacted):</p>
+<div class="card email-mock">
+  <div class="hdr">
+    <b>From:</b> Manuel Ayala &lt;manuel@redstonemanufacturing.com&gt;<br>
+    <b>To:</b> <span class="redact">lead's work email</span><br>
+    <b>CC:</b> eric@redstonemanufacturing.com, alec@redstonemanufacturing.com<br>
+    <b>Subject:</b> CNC Machining with Redstone Manufacturing
+  </div>
+  <p>Hi Joshua,</p>
+  <p>Thanks for reaching out. I'd like to schedule a time to chat to learn more.</p>
+  <p>When would be a good time to connect with you over a video call?</p>
+  <p>You can also book a time directly here: <span class="redact">Alec's calendar link</span></p>
+  <p><strong>Manuel Ayala</strong> | Account Executive<br>
+  Redstone Manufacturing<br>
+  Direct: 330-632-3292<br>
+  redstonemanufacturing.com</p>
+  <blockquote>
+    On Fri, Jun 26, 2026 at 8:09 AM:<br><br>
+    Tell us about your project<br>
+    <b>Current Stage of Production</b> — Ready to Start Production – Prototyping Complete<br>
+    <b>Type of Manufacturing Process</b> — CNC Machining<br>
+    <b>Main Reason for Requesting Estimate</b> — Reduce Costs · New part, no supplier currently<br>
+    <b>Target Date of First Shipment</b> — 07/01/2026<br>
+    <b>Name</b> — Joshua K. &nbsp;<b>Company</b> — <span class="redact">redacted</span><br>
+    <b>Work Email</b> — <span class="redact">redacted</span> &nbsp;<b>Phone</b> — <span class="redact">redacted</span>
+  </blockquote>
+</div>
+
+<h2><span class="num">5</span>Requirement → implementation map</h2>
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Requirement</th><th>Implementation</th></tr>
+  <tr><td>1</td><td>Enterprise-domain qualification</td><td><code>isEnterpriseDomain_</code> + 25-domain free-mail blocklist (gmail, yahoo, hotmail, outlook, icloud, aol, proton, gmx, zoho, yandex, qq, comcast, att…)</td></tr>
+  <tr><td>2</td><td>Reply from Manuel's account</td><td>Script owned by manuel@; <code>GmailApp.sendEmail</code> is a genuine send from his mailbox</td></tr>
+  <tr><td>3</td><td>Exact wording + calendar link</td><td><code>sendAutoReply_</code> — template verbatim from the Teledyne thread; link from the <code>ALEC_CALENDAR_LINK</code> property</td></tr>
+  <tr><td>4</td><td>CC Eric and Alec</td><td><code>CONFIG.cc</code> on every send</td></tr>
+  <tr><td>5</td><td>Lone replies forwarded to Alec</td><td><code>forwardLoneReplies_</code> poller with dedup tracking</td></tr>
+  <tr><td>6</td><td>Log email in HubSpot</td><td><code>logToHubSpot_</code> → email engagement associated to the contact via private-app API; contact-create fallback</td></tr>
+  <tr><td>7</td><td>Form submission in the body</td><td><code>extractFormBlock_</code> quotes the notification verbatim, exactly like Manuel's manual reply</td></tr>
+  <tr><td>8</td><td>Dynamic subject</td><td>Built from the "Type of Manufacturing Process" field</td></tr>
+</table>
+</div>
+
+<h2><span class="num">6</span>Code walkthrough</h2>
+<p>The whole system is one file, <code>Code.gs</code> (~300 lines), plus a manifest. Function map:</p>
+<div class="scroll">
+<table>
+  <tr><th>Function</th><th>Role</th></tr>
+  <tr><td><code>main()</code></td><td>Trigger entry — runs both pipelines every 5 minutes</td></tr>
+  <tr><td><code>setup()</code></td><td>One-time: creates the 4 labels + the time-driven trigger</td></tr>
+  <tr><td><code>processNewLeads_()</code></td><td>Find → parse → qualify → send → log → label; per-thread try/catch to <code>lead-auto/error</code></td></tr>
+  <tr><td><code>sendAutoReply_()</code></td><td>Subject from process field; text + HTML bodies; CCs; labels the sent thread</td></tr>
+  <tr><td><code>forwardLoneReplies_()</code></td><td>Requirement-5 watcher; forwarded message IDs persisted, bounded at 2,000</td></tr>
+  <tr><td><code>logToHubSpot_()</code> / <code>findOrCreateContact_()</code></td><td>Email engagement on the contact; creates contact as fallback</td></tr>
+  <tr><td><code>parseLeadForm_()</code> / <code>extractFields_()</code></td><td>Label-position slicing parser, tolerant of formatting noise</td></tr>
+  <tr><td><code>test_parseLatest()</code></td><td><strong>Dry run</strong> — logs what would be sent, without sending</td></tr>
+</table>
+</div>
+<details>
+  <summary>Full source — Code.gs</summary>
+  <pre><code>/**
+ * Redstone Manufacturing — lead-form auto-reply automation (RED-429)
+ *
+ * Runs as an Apps Script project OWNED BY manuel@redstonemanufacturing.com.
+ * Trigger: time-driven, every 5 minutes → main()
+ *
+ * Flow:
+ *  1. Find new lead-form notification emails in this inbox.
+ *  2. Parse the form fields (work email, name, process, …).
+ *  3. If the lead&#x27;s email is on an enterprise domain (not free-mail):
+ *     send Manuel&#x27;s templated reply to the lead, CC Eric + Alec,
+ *     subject &quot;{Process} with Redstone Manufacturing&quot;,
+ *     with the form submission quoted at the bottom and Alec&#x27;s
+ *     calendar link appended.
+ *  4. Log the sent email against the contact in HubSpot (private app).
+ *  5. Separately: watch auto-reply threads for lead replies that did NOT
+ *     include Alec (no reply-all) and forward those to Alec.
+ *
+ * Setup: see README.md. Run setup() once after setting Script Properties.
+ */
+
+var CONFIG = {
+  // People
+  cc: &#x27;eric@redstonemanufacturing.com, alec@redstonemanufacturing.com&#x27;,
+  forwardTo: &#x27;alec@redstonemanufacturing.com&#x27;,
+  companyDomain: &#x27;redstonemanufacturing.com&#x27;,
+
+  // OPEN ITEM: Alec&#x27;s meeting-scheduler link (set as Script Property ALEC_CALENDAR_LINK)
+  calendarLinkFallback: &#x27;&#x27;,
+
+  // Gmail search that matches raw lead-form notification emails.
+  // TODO: tighten with the real sender once confirmed, e.g. &#x27;from:forms@… &#x27;
+  notificationQuery: &#x27;subject:&quot;Tell us about your project&quot; -label:lead-auto/processed -label:lead-auto/skipped -label:lead-auto/error newer_than:3d&#x27;,
+
+  labels: {
+    processed: &#x27;lead-auto/processed&#x27;,
+    skipped: &#x27;lead-auto/skipped&#x27;,   // free-mail / unqualified
+    sent: &#x27;lead-auto/sent&#x27;,         // threads where we sent the auto-reply
+    error: &#x27;lead-auto/error&#x27;,
+  },
+
+  freemailDomains: [
+    &#x27;gmail.com&#x27;, &#x27;googlemail.com&#x27;, &#x27;yahoo.com&#x27;, &#x27;ymail.com&#x27;, &#x27;hotmail.com&#x27;,
+    &#x27;outlook.com&#x27;, &#x27;live.com&#x27;, &#x27;msn.com&#x27;, &#x27;icloud.com&#x27;, &#x27;me.com&#x27;, &#x27;mac.com&#x27;,
+    &#x27;aol.com&#x27;, &#x27;proton.me&#x27;, &#x27;protonmail.com&#x27;, &#x27;gmx.com&#x27;, &#x27;gmx.net&#x27;,
+    &#x27;zoho.com&#x27;, &#x27;mail.com&#x27;, &#x27;yandex.com&#x27;, &#x27;yandex.ru&#x27;, &#x27;qq.com&#x27;, &#x27;163.com&#x27;,
+    &#x27;126.com&#x27;, &#x27;comcast.net&#x27;, &#x27;verizon.net&#x27;, &#x27;att.net&#x27;, &#x27;sbcglobal.net&#x27;,
+  ],
+};
+
+// Field labels as they appear in the lead-form notification email.
+var FORM_FIELDS = [
+  &#x27;Current Stage of Production&#x27;,
+  &#x27;Type of Manufacturing Process&#x27;,
+  &#x27;Main Reason for Requesting Estimate&#x27;,
+  &#x27;Target Date of First Shipment&#x27;,
+  &#x27;Name&#x27;,
+  &#x27;Company&#x27;,
+  &#x27;Work Email&#x27;,
+  &#x27;Phone Number&#x27;,
+];
+
+// ---------------------------------------------------------------- main
+
+function main() {
+  processNewLeads_();
+  forwardLoneReplies_();
+}
+
+/** One-time setup: creates labels and the 5-minute trigger. */
+function setup() {
+  Object.keys(CONFIG.labels).forEach(function (k) {
+    getOrCreateLabel_(CONFIG.labels[k]);
+  });
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === &#x27;main&#x27;) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger(&#x27;main&#x27;).timeBased().everyMinutes(5).create();
+  Logger.log(&#x27;Setup complete: labels created, 5-minute trigger installed.&#x27;);
+}
+
+// ------------------------------------------------- 1. new-lead pipeline
+
+function processNewLeads_() {
+  var threads = GmailApp.search(CONFIG.notificationQuery, 0, 20);
+  threads.forEach(function (thread) {
+    try {
+      var msg = thread.getMessages()[0];
+      var body = msg.getPlainBody();
+      var lead = parseLeadForm_(body);
+
+      if (!lead.email) {
+        throw new Error(&#x27;Could not parse Work Email from notification &#x27; + msg.getId());
+      }
+
+      if (!isEnterpriseDomain_(lead.email)) {
+        thread.addLabel(getOrCreateLabel_(CONFIG.labels.skipped));
+        thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
+        Logger.log(&#x27;Skipped (free-mail): &#x27; + lead.email);
+        return;
+      }
+
+      var sent = sendAutoReply_(lead, body, msg.getDate());
+      logToHubSpot_(lead, sent.subject, sent.textBody);
+
+      thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
+      Logger.log(&#x27;Auto-reply sent to &#x27; + lead.email + &#x27; — &quot;&#x27; + sent.subject + &#x27;&quot;&#x27;);
+    } catch (e) {
+      thread.addLabel(getOrCreateLabel_(CONFIG.labels.error));
+      thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
+      Logger.log(&#x27;ERROR on thread &#x27; + thread.getId() + &#x27;: &#x27; + e.message);
+    }
+  });
+}
+
+function sendAutoReply_(lead, rawFormBody, formDate) {
+  var process = lead.fields[&#x27;Type of Manufacturing Process&#x27;] || &#x27;Manufacturing&#x27;;
+  var subject = process + &#x27; with Redstone Manufacturing&#x27;;
+  var firstName = firstName_(lead.fields[&#x27;Name&#x27;]);
+  var calendarLink = scriptProp_(&#x27;ALEC_CALENDAR_LINK&#x27;) || CONFIG.calendarLinkFallback;
+
+  var formBlock = extractFormBlock_(rawFormBody);
+  var dateStr = Utilities.formatDate(formDate, Session.getScriptTimeZone(), &quot;EEE, MMM d, yyyy &#x27;at&#x27; h:mm a&quot;);
+
+  var textBody =
+    &#x27;Hi &#x27; + firstName + &#x27;,\n\n&#x27; +
+    &quot;Thanks for reaching out. I&#x27;d like to schedule a time to chat to learn more.\n\n&quot; +
+    &#x27;When would be a good time to connect with you over a video call?\n\n&#x27; +
+    (calendarLink ? &#x27;You can also book a time directly here: &#x27; + calendarLink + &#x27;\n\n&#x27; : &#x27;&#x27;) +
+    &#x27;Manuel Ayala | Account Executive\n&#x27; +
+    &#x27;Redstone Manufacturing\n&#x27; +
+    &#x27;Direct: 330-632-3292\n&#x27; +
+    &#x27;redstonemanufacturing.com\n\n&#x27; +
+    &#x27;On &#x27; + dateStr + &#x27;:\n\n&#x27; +
+    quoteBlock_(formBlock);
+
+  var htmlBody =
+    &#x27;&lt;p&gt;Hi &#x27; + escapeHtml_(firstName) + &#x27;,&lt;/p&gt;&#x27; +
+    &quot;&lt;p&gt;Thanks for reaching out. I&#x27;d like to schedule a time to chat to learn more.&lt;/p&gt;&quot; +
+    &#x27;&lt;p&gt;When would be a good time to connect with you over a video call?&lt;/p&gt;&#x27; +
+    (calendarLink
+      ? &#x27;&lt;p&gt;You can also book a time directly here: &lt;a href=&quot;&#x27; + calendarLink + &#x27;&quot;&gt;&#x27; + calendarLink + &#x27;&lt;/a&gt;&lt;/p&gt;&#x27;
+      : &#x27;&#x27;) +
+    &#x27;&lt;p&gt;&lt;b&gt;Manuel Ayala&lt;/b&gt; | Account Executive&lt;br&gt;&#x27; +
+    &#x27;Redstone Manufacturing&lt;br&gt;&#x27; +
+    &#x27;Direct: 330-632-3292&lt;br&gt;&#x27; +
+    &#x27;&lt;a href=&quot;https://redstonemanufacturing.com&quot;&gt;redstonemanufacturing.com&lt;/a&gt;&lt;/p&gt;&#x27; +
+    &#x27;&lt;p&gt;On &#x27; + escapeHtml_(dateStr) + &#x27;:&lt;/p&gt;&#x27; +
+    &#x27;&lt;blockquote style=&quot;margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;&quot;&gt;&#x27; +
+    escapeHtml_(formBlock).replace(/\n/g, &#x27;&lt;br&gt;&#x27;) +
+    &#x27;&lt;/blockquote&gt;&#x27;;
+
+  GmailApp.sendEmail(lead.email, subject, textBody, {
+    cc: CONFIG.cc,
+    htmlBody: htmlBody,
+    name: &#x27;Manuel Ayala&#x27;,
+  });
+
+  // Label the sent thread so the reply-forwarder can watch it.
+  Utilities.sleep(2000);
+  var sentThreads = GmailApp.search(&#x27;in:sent to:&#x27; + lead.email + &#x27; subject:&quot;&#x27; + subject + &#x27;&quot;&#x27;, 0, 1);
+  if (sentThreads.length) sentThreads[0].addLabel(getOrCreateLabel_(CONFIG.labels.sent));
+
+  return { subject: subject, textBody: textBody };
+}
+
+// --------------------------------------------- 2. reply-forward watcher
+
+/**
+ * For every auto-reply thread, forward to Alec any message from the lead
+ * where Alec is not on To/Cc (i.e. the lead replied only to Manuel).
+ */
+function forwardLoneReplies_() {
+  var threads = GmailApp.search(&#x27;label:&#x27; + CONFIG.labels.sent + &#x27; newer_than:60d&#x27;, 0, 50);
+  var store = PropertiesService.getScriptProperties();
+  var forwarded = JSON.parse(store.getProperty(&#x27;FORWARDED_IDS&#x27;) || &#x27;[]&#x27;);
+
+  threads.forEach(function (thread) {
+    thread.getMessages().forEach(function (msg) {
+      var id = msg.getId();
+      if (forwarded.indexOf(id) !== -1) return;
+
+      var from = (msg.getFrom() || &#x27;&#x27;).toLowerCase();
+      if (from.indexOf(&#x27;@&#x27; + CONFIG.companyDomain) !== -1) return; // our own mail
+
+      var recipients = ((msg.getTo() || &#x27;&#x27;) + &#x27;,&#x27; + (msg.getCc() || &#x27;&#x27;)).toLowerCase();
+      if (recipients.indexOf(CONFIG.forwardTo.toLowerCase()) !== -1) return; // Alec already on it
+
+      msg.forward(CONFIG.forwardTo, {
+        subject: &#x27;Fwd: &#x27; + msg.getSubject(),
+      });
+      forwarded.push(id);
+      Logger.log(&#x27;Forwarded lone reply &#x27; + id + &#x27; to &#x27; + CONFIG.forwardTo);
+    });
+  });
+
+  // keep the store bounded
+  if (forwarded.length &gt; 2000) forwarded = forwarded.slice(-1000);
+  store.setProperty(&#x27;FORWARDED_IDS&#x27;, JSON.stringify(forwarded));
+}
+
+// ------------------------------------------------------ 3. HubSpot log
+
+/**
+ * Logs the sent email as an Email engagement on the HubSpot contact.
+ * Requires Script Property HUBSPOT_TOKEN (private-app token with scopes:
+ * crm.objects.contacts.read, crm.objects.contacts.write, sales-email-read
+ * is NOT needed — engagement writes use crm.objects.* email scope).
+ */
+function logToHubSpot_(lead, subject, textBody) {
+  var token = scriptProp_(&#x27;HUBSPOT_TOKEN&#x27;);
+  if (!token) {
+    Logger.log(&#x27;HUBSPOT_TOKEN not set — skipping HubSpot logging&#x27;);
+    return;
+  }
+
+  var contactId = findOrCreateContact_(lead, token);
+
+  var payload = {
+    properties: {
+      hs_timestamp: new Date().toISOString(),
+      hs_email_direction: &#x27;EMAIL&#x27;,
+      hs_email_status: &#x27;SENT&#x27;,
+      hs_email_subject: subject,
+      hs_email_text: textBody,
+    },
+    associations: [{
+      to: { id: contactId },
+      types: [{ associationCategory: &#x27;HUBSPOT_DEFINED&#x27;, associationTypeId: 198 }], // email → contact
+    }],
+  };
+
+  hubspot_(&#x27;https://api.hubapi.com/crm/v3/objects/emails&#x27;, &#x27;post&#x27;, token, payload);
+}
+
+function findOrCreateContact_(lead, token) {
+  var search = hubspot_(&#x27;https://api.hubapi.com/crm/v3/objects/contacts/search&#x27;, &#x27;post&#x27;, token, {
+    filterGroups: [{ filters: [{ propertyName: &#x27;email&#x27;, operator: &#x27;EQ&#x27;, value: lead.email }] }],
+    properties: [&#x27;email&#x27;],
+    limit: 1,
+  });
+  if (search.results &amp;&amp; search.results.length) return search.results[0].id;
+
+  // Form should have created the contact already; create as fallback.
+  var name = (lead.fields[&#x27;Name&#x27;] || &#x27;&#x27;).trim().split(/\s+/);
+  var created = hubspot_(&#x27;https://api.hubapi.com/crm/v3/objects/contacts&#x27;, &#x27;post&#x27;, token, {
+    properties: {
+      email: lead.email,
+      firstname: name[0] || &#x27;&#x27;,
+      lastname: name.slice(1).join(&#x27; &#x27;),
+      company: lead.fields[&#x27;Company&#x27;] || &#x27;&#x27;,
+      phone: lead.fields[&#x27;Phone Number&#x27;] || &#x27;&#x27;,
+    },
+  });
+  return created.id;
+}
+
+function hubspot_(url, method, token, payload) {
+  var resp = UrlFetchApp.fetch(url, {
+    method: method,
+    contentType: &#x27;application/json&#x27;,
+    headers: { Authorization: &#x27;Bearer &#x27; + token },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+  var code = resp.getResponseCode();
+  if (code &gt;= 300) throw new Error(&#x27;HubSpot &#x27; + code + &#x27; on &#x27; + url + &#x27;: &#x27; + resp.getContentText().slice(0, 300));
+  return JSON.parse(resp.getContentText() || &#x27;{}&#x27;);
+}
+
+// -------------------------------------------------------- parsing utils
+
+function parseLeadForm_(text) {
+  var fields = extractFields_(text, FORM_FIELDS);
+  var emailRaw = fields[&#x27;Work Email&#x27;] || &#x27;&#x27;;
+  var emailMatch = emailRaw.replace(/\s/g, &#x27;&#x27;).match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/);
+  return {
+    email: emailMatch ? emailMatch[0].toLowerCase() : null,
+    fields: fields,
+  };
+}
+
+/** Slice the text between each known label and the next one. */
+function extractFields_(text, labels) {
+  var found = [];
+  labels.forEach(function (label) {
+    var re = new RegExp(&#x27;\\*?\\s*&#x27; + escapeRe_(label) + &#x27;\\s*\\*?\\s*:?&#x27;, &#x27;i&#x27;);
+    var m = re.exec(text);
+    if (m) found.push({ label: label, start: m.index, end: m.index + m[0].length });
+  });
+  found.sort(function (a, b) { return a.start - b.start; });
+
+  var out = {};
+  found.forEach(function (f, i) {
+    var next = found[i + 1];
+    var val = text.slice(f.end, next ? next.start : text.length);
+    val = val.replace(/Contact Information/i, &#x27; &#x27;)
+             .replace(/Tell us about your project/i, &#x27; &#x27;)
+             .replace(/[*​]/g, &#x27; &#x27;)
+             .replace(/^\s*[-•]\s*/gm, &#x27;&#x27;)
+             .replace(/\s+/g, &#x27; &#x27;)
+             .trim();
+    out[f.label] = val;
+  });
+  return out;
+}
+
+/** The form portion of the notification body, for quoting in the reply. */
+function extractFormBlock_(text) {
+  var start = text.search(/Tell us about your project/i);
+  var block = start &gt;= 0 ? text.slice(start) : text;
+  return block.replace(/\r/g, &#x27;&#x27;).replace(/\n{3,}/g, &#x27;\n\n&#x27;).trim();
+}
+
+function isEnterpriseDomain_(email) {
+  var domain = email.split(&#x27;@&#x27;)[1];
+  return CONFIG.freemailDomains.indexOf(domain) === -1;
+}
+
+function firstName_(name) {
+  var first = (name || &#x27;&#x27;).trim().split(/\s+/)[0] || &#x27;there&#x27;;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function quoteBlock_(text) {
+  return text.split(&#x27;\n&#x27;).map(function (l) { return &#x27;&gt; &#x27; + l; }).join(&#x27;\n&#x27;);
+}
+
+function getOrCreateLabel_(name) {
+  return GmailApp.getUserLabelByName(name) || GmailApp.createLabel(name);
+}
+
+function scriptProp_(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
+
+function escapeRe_(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, &#x27;\\$&amp;&#x27;);
+}
+
+function escapeHtml_(s) {
+  return String(s).replace(/&amp;/g, &#x27;&amp;amp;&#x27;).replace(/&lt;/g, &#x27;&amp;lt;&#x27;).replace(/&gt;/g, &#x27;&amp;gt;&#x27;).replace(/&quot;/g, &#x27;&amp;quot;&#x27;);
+}
+
+// ------------------------------------------------------------- testing
+
+/** Dry run: parse the newest matching notification and log what WOULD be sent. */
+function test_parseLatest() {
+  var threads = GmailApp.search(CONFIG.notificationQuery.replace(/-label:\S+/g, &#x27;&#x27;), 0, 1);
+  if (!threads.length) { Logger.log(&#x27;No matching notification email found.&#x27;); return; }
+  var body = threads[0].getMessages()[0].getPlainBody();
+  var lead = parseLeadForm_(body);
+  Logger.log(&#x27;Parsed email: &#x27; + lead.email);
+  Logger.log(&#x27;Enterprise: &#x27; + (lead.email ? isEnterpriseDomain_(lead.email) : &#x27;n/a&#x27;));
+  Logger.log(&#x27;Fields: &#x27; + JSON.stringify(lead.fields, null, 2));
+  Logger.log(&#x27;Subject would be: &#x27; + (lead.fields[&#x27;Type of Manufacturing Process&#x27;] || &#x27;Manufacturing&#x27;) + &#x27; with Redstone Manufacturing&#x27;);
+}
+</code></pre>
+</details>
+<details>
+  <summary>Manifest — appsscript.json</summary>
+  <pre><code>{
+  &quot;timeZone&quot;: &quot;America/Denver&quot;,
+  &quot;exceptionLogging&quot;: &quot;STACKDRIVER&quot;,
+  &quot;runtimeVersion&quot;: &quot;V8&quot;,
+  &quot;oauthScopes&quot;: [
+    &quot;https://mail.google.com/&quot;,
+    &quot;https://www.googleapis.com/auth/script.external_request&quot;,
+    &quot;https://www.googleapis.com/auth/script.scriptapp&quot;
+  ]
+}
+</code></pre>
+</details>
+
+<h2><span class="num">7</span>Deploy runbook</h2>
+<ol>
+  <li>As Manuel (via Workspace admin): script.google.com → new project → paste <code>Code.gs</code> + <code>appsscript.json</code></li>
+  <li>Script Properties: <code>HUBSPOT_TOKEN</code> (private app: contacts read/write + email-object write), <code>ALEC_CALENDAR_LINK</code></li>
+  <li>Verify <code>notificationQuery</code> against a real notification email; run <code>test_parseLatest()</code> and check the parsed fields</li>
+  <li>Run <code>setup()</code> once (OAuth grant, labels, trigger)</li>
+  <li>End-to-end test: one dummy <strong>enterprise</strong> submission + one <strong>gmail</strong> submission → verify reply/CCs/subject/HubSpot log on the first, silent skip on the second; screenshot both</li>
+  <li>Send draft + screenshots to Eric (due Fri 7/17)</li>
+</ol>
+
+<h2><span class="num">8</span>Open items</h2>
+<div class="callout open-item"><strong class="warn">Blocking go-live — three inputs:</strong>
+<ol>
+  <li><strong>Alec's calendar link</strong> — requested from Eric/Alec; the script gracefully omits the booking line until it's set</li>
+  <li><strong>One raw notification email</strong> — to lock the Gmail query and re-test the parser (currently built from the version quoted in the Teledyne thread)</li>
+  <li><strong>HubSpot private-app token</strong> — Redstone portal → Settings → Integrations → Private Apps</li>
+</ol>
+</div>
+
+<h2><span class="num">9</span>Status</h2>
+<ul>
+  <li><span class="ok">✓</span> Architecture decided, full system written (2026-07-14)</li>
+  <li><span class="ok">✓</span> Manuel's verbatim template + form structure extracted from the source thread</li>
+  <li><span class="ok">✓</span> Plane RED-429 moved to In Progress with work-log</li>
+  <li><span class="ok">✓</span> Client-facing draft for Eric written (pending internal review)</li>
+  <li><span class="warn">○</span> Deploy + end-to-end test — blocked on the three open items above</li>
+  <li><span class="warn">○</span> Draft to Eric — due Fri 2026-07-17</li>
+</ul>
+
+<footer>
+  RED-429 · Redstone Manufacturing lead-form auto-reply automation · Prepared by KAMG · Internal review page — lead PII redacted.
+</footer>
+
+</div>
+</body>
+</html>
