@@ -69,15 +69,15 @@
   <div class="kicker">Redstone Manufacturing · RED-429</div>
   <h1>Lead-Form Auto-Reply Automation</h1>
   <div class="meta">
-    <span class="badge review">v2 — Draft for review</span>
+    <span class="badge review">v3 — Built, dark-launched, pending approval</span>
     <span>Prepared by KAMG · updated 2026-07-15</span>
     <span>Client draft due: <strong>Fri 2026-07-17</strong></span>
   </div>
 </header>
 
-<p><strong>In one sentence:</strong> every enterprise-domain lead-form submission automatically receives Manuel's personal reply within ~5 minutes — from his real mailbox, with Eric and Alec CC'd, the submission quoted, a booking link included, and the email logged in HubSpot — while free-mail submissions are silently skipped and any lead reply that misses Alec is auto-forwarded to him.</p>
+<p><strong>In one sentence:</strong> the instant an enterprise-domain lead submits the quote form, the website itself sends Manuel's personal reply — from his address, with Eric and Alec CC'd, the submission echoed, a booking link included, and the email logged in HubSpot — while free-mail and article-form submissions are silently skipped.</p>
 
-<div class="callout"><strong>v2 update (07/15):</strong> the build was re-reviewed against the <em>live</em> redstone-web lead pipeline and reworked. The new site sends its own Mailgun notification — different subject, different recipient, different field labels than the old WordPress email the v1 parser targeted. v1 would have processed zero leads. All four incompatibilities are fixed and the parser is now verified against the site's actual source code. Details in §4.</div>
+<div class="callout"><strong>v3 pivot (07/15):</strong> Kasandz has no credentials for the sales@ or Manuel mailboxes, so the Apps Script (v2) cannot be deployed by us — it survives as a client-deployable handoff option (<a href="https://github.com/leo26850/redstone-email-automation/blob/main/BUILD.md">BUILD.md</a>). The auto-reply is instead <strong>built into redstone-web's own lead pipeline</strong> and is already on a PR, deployed dark behind an env flag. This removes the mailbox dependency, the 5-minute delay, and the email-parsing layer entirely — the form handler has the raw data in hand. History: §8.</div>
 
 <h2><span class="num">1</span>The brief</h2>
 <p>From Eric's email of 2026-07-09. Eight requirements:</p>
@@ -92,69 +92,51 @@
   <li>Subject line: <strong>"XXXX with Redstone Manufacturing"</strong>, where XXXX = the manufacturing process from the form</li>
 </ol>
 
-<h2><span class="num">2</span>Architecture decision</h2>
-<p><strong>One Google Apps Script project owned by <code>manuel@redstonemanufacturing.com</code>.</strong> No servers, no paid middleware, no website changes.</p>
+<h2><span class="num">2</span>Architecture (v3 — in-site)</h2>
+<p><strong>The auto-reply lives inside the website's quote endpoint</strong> (<code>/api/quote</code> in kasandzz/redstone-web), running right after the lead is captured. It sends through the site's existing verified Mailgun domain as <code>Manuel Ayala &lt;manuel@redstonemanufacturing.com&gt;</code> with <code>Reply-To</code> his real inbox.</p>
 <ul>
-  <li><strong>Runs as Manuel</strong> — sends are genuine emails from his mailbox: real threading, real CCs, lands in his Sent folder. Requirement 2 comes for free.</li>
-  <li><strong>The notification email is the trigger</strong> — the site emails every lead to the sales inbox, so the script polls Gmail every 5 minutes. No webhooks, no HubSpot-tier dependency, no website changes.</li>
-  <li><strong>Reply-forwarding needs mailbox access anyway</strong> — Zapier/Make and HubSpot workflows handle "forward replies in this thread" poorly; a Gmail-side script does it natively. This also fixes where the script must live: on the mailbox where the lead's replies to Manuel arrive.</li>
-  <li><strong>Zero marginal cost</strong> — Workspace quotas allow ~1,500 sends/day; lead volume is nowhere near.</li>
+  <li><strong>No mailbox access needed</strong> — the only approach Kasandz can build, test, and deploy end-to-end alone</li>
+  <li><strong>No parsing layer</strong> — the handler holds the raw form data and the HubSpot contact id from the upsert it just performed</li>
+  <li><strong>Instant</strong> — the reply lands seconds after submission, not on a 5-minute poll</li>
+  <li><strong>Dark launch</strong> — code is deployed but sends nothing until the Vercel env var <code>AUTOREPLY_ENABLED=true</code> is set (post-approval)</li>
+  <li><strong>Fail-safe</strong> — the auto-reply call never throws; a failure can never affect lead capture, HubSpot, or the sales notification</li>
 </ul>
 
 <h2><span class="num">3</span>System flow</h2>
 <div class="scroll"><pre>
-Form submission (website: full quote form /api/quote, article form /api/lead)
-   ├──► HubSpot contact upsert + form entry        (done by the site)
-   ├──► Slack alert                                 (done by the site)
-   └──► Mailgun notification email
-        From: Redstone Leads &lt;no-reply@redstonemanufacturing.com&gt;
-        To:   sales@redstonemanufacturing.com ──► must deliver into Manuel's inbox
-        Subj: New Website Lead - {Company} - {Process}
-                        │
-        Apps Script trigger, every 5 min → main()
-                        │
-   ┌── processNewLeads_()
-   │   1. Gmail search: from:no-reply@… subject:"New Website Lead", unprocessed
-   │   2. Parse: email, name, company, phone, project fields, description,
-   │      HubSpot contact id (all carried by the notification itself)
-   │   3. Article-form lead (no process field)? → skip, label (policy: pending Eric)
-   │      Free-mail domain?                     → skip, label — no reply ever
-   │   4. Send as Manuel:
-   │        To:      lead's work email
-   │        CC:      eric@ + alec@redstonemanufacturing.com
-   │        Subject: "{Process} with Redstone Manufacturing"
-   │        Body:    Manuel's verbatim template + calendar link + signature
-   │                 + submission re-rendered as a quoted block
-   │                 (sanitized — internal HubSpot links never quoted)
-   │   5. Log email engagement in HubSpot via the contact id from step 2
-   │   6. Labels: notification → lead-auto/processed, sent thread → lead-auto/sent
-   │
-   └── forwardLoneReplies_()
-       Scan lead-auto/sent threads (60-day window).
-       Message FROM the lead where alec@ is NOT on To/Cc
-       → forward to Alec, dedup-tracked so nothing forwards twice.
+Quote form submission ──► /api/quote (Vercel)
+   ├── 1. Validate + honeypot                    (existing)
+   ├── 2. HubSpot contact upsert → contactId     (existing)
+   ├── 3. Mailgun notification to sales@         (existing)
+   ├── 4. Slack alert                            (existing)
+   └── 5. sendAutoReply()                        ★ NEW — src/lib/autoreply.ts
+          │
+          ├─ AUTOREPLY_ENABLED !== 'true'? → skip (dark launch)
+          ├─ No process field (article form)? → skip (policy, pending Eric)
+          ├─ Free-mail domain?              → skip — no reply ever
+          └─ Send via Mailgun:
+               From:     Manuel Ayala &lt;manuel@redstonemanufacturing.com&gt;
+               Reply-To: manuel@  (lead replies go to his real inbox)
+               To:       lead's work email
+               CC:       eric@ + alec@redstonemanufacturing.com
+               Subject:  "{Process} with Redstone Manufacturing"
+               Body:     Manuel's verbatim template + calendar link
+                         + signature + submission echoed
+             then log an email engagement on the HubSpot contact
+             (id already in hand from step 2)
+
+Requirement 5 (lead replies only-to-Manuel → forward to Alec):
+   lives in Manuel's mailbox as a Gmail filter — one-time client-side
+   setup (instructions in the Eric draft), since replies land in an
+   inbox Kasandz cannot access.
 </pre></div>
-<p><strong>State machine &amp; audit trail = Gmail labels:</strong> <code>lead-auto/processed</code>, <code>lead-auto/skipped</code>, <code>lead-auto/skipped-articleform</code>, <code>lead-auto/sent</code>, <code>lead-auto/error</code>. Failures label the thread <code>error</code> and never auto-retry — everything is inspectable straight from Manuel's inbox.</p>
 
-<h2><span class="num">4</span>v2 compatibility review — what changed and why</h2>
-<p>The v1 parser was written from the old Gravity Forms notification (quoted in the original lead thread). The updated site (live on <code>master</code>, deployed on Vercel) replaces that entirely: its API routes push leads to HubSpot themselves and send their own notification via Mailgun (<code>src/pages/api/quote.ts</code> → <code>src/lib/leads.ts</code>). Four breaks were found and fixed:</p>
-<div class="scroll">
-<table>
-  <tr><th>#</th><th>v1 assumption (old WordPress email)</th><th>Reality (live site)</th><th>Fix</th></tr>
-  <tr><td>1</td><td>Subject "Tell us about your project"</td><td>Subject <code>New Website Lead - {Company} - {Process}</code> — v1 query matched <strong>zero</strong> emails</td><td class="fixed">Query rewritten: <code>from:no-reply@… subject:"New Website Lead"</code></td></tr>
-  <tr><td>2</td><td>Notification arrives in Manuel's inbox</td><td>Sent to <strong>sales@</strong></td><td class="fixed">Deploy requirement: sales@ must deliver into Manuel's inbox (group/routing) — open item</td></tr>
-  <tr><td>3</td><td>Labels like "Work Email", "Phone Number", "Name"</td><td>New template: <code>Email:</code>, <code>Phone:</code>, unlabeled name/company lines — v1 would have <strong>errored on every lead</strong></td><td class="fixed">Parser rebuilt against the site's <code>buildEmailText()</code> template; verified against both form types</td></tr>
-  <tr><td>4</td><td>Quote the raw notification into the reply (req. 7)</td><td>New notification contains the <strong>internal HubSpot contact URL</strong> — quoting it would leak the CRM link to leads</td><td class="fixed">Quoted block re-rendered from parsed fields only; raw notification never quoted</td></tr>
-</table>
-</div>
-<p><strong>Two bonuses from the new format:</strong> the notification carries the HubSpot contact id, so the script logs the engagement directly with no contact search; and the notification template is source code we control — the format can't drift without us knowing (the site repo is the parser's spec).</p>
-<p><strong>One scope addition:</strong> the site has a second, lighter form (article-page "Request a quote": name + email + part description, no process field) feeding the same pipeline. Default policy: <strong>no auto-reply</strong> for these, labeled <code>skipped-articleform</code> — pending Eric's decision.</p>
-
-<h2><span class="num">5</span>What the lead receives</h2>
+<h2><span class="num">4</span>What the lead receives</h2>
 <p>Rendered example (lead contact details redacted):</p>
 <div class="card email-mock">
   <div class="hdr">
     <b>From:</b> Manuel Ayala &lt;manuel@redstonemanufacturing.com&gt;<br>
+    <b>Reply-To:</b> manuel@redstonemanufacturing.com<br>
     <b>To:</b> <span class="redact">lead's work email</span><br>
     <b>CC:</b> eric@redstonemanufacturing.com, alec@redstonemanufacturing.com<br>
     <b>Subject:</b> CNC Machining with Redstone Manufacturing
@@ -168,521 +150,87 @@ Form submission (website: full quote form /api/quote, article form /api/lead)
   Direct: 330-632-3292<br>
   redstonemanufacturing.com</p>
   <blockquote>
-    On Tue, Jul 15, 2026 at 9:41 AM:<br><br>
-    Tell us about your project<br>
+    Your submission:<br><br>
     Current stage of production: Ready to Start Production – Prototyping Complete<br>
     Type of manufacturing process: CNC Machining<br>
     Main reason for estimate: Reduce Costs, New part, no supplier currently<br>
-    Estimated annual spend: <span class="redact">redacted</span><br>
     Target first shipment: 07/01/2026<br>
     Current country of production: USA<br>
     Describe your part or product:<br>
-    <span class="redact">lead's part description</span><br><br>
-    Contact Information<br>
-    Name: Joshua K. &nbsp;·&nbsp; Company: <span class="redact">redacted</span><br>
-    Work Email: <span class="redact">redacted</span> &nbsp;·&nbsp; Phone: <span class="redact">redacted</span>
+    <span class="redact">lead's part description</span>
   </blockquote>
 </div>
 
-<h2><span class="num">6</span>Requirement → implementation map</h2>
+<h2><span class="num">5</span>Requirement → implementation map</h2>
 <div class="scroll">
 <table>
   <tr><th>#</th><th>Requirement</th><th>Implementation</th></tr>
-  <tr><td>1</td><td>Enterprise-domain qualification</td><td><code>isEnterpriseDomain_</code> + 25-domain free-mail blocklist (gmail, yahoo, hotmail, outlook, icloud, aol, proton, gmx, zoho, yandex, qq, comcast, att…)</td></tr>
-  <tr><td>2</td><td>Reply from Manuel's account</td><td>Script owned by manuel@; <code>GmailApp.sendEmail</code> is a genuine send from his mailbox</td></tr>
-  <tr><td>3</td><td>Exact wording + calendar link</td><td><code>sendAutoReply_</code> — template verbatim from the original thread; link from the <code>ALEC_CALENDAR_LINK</code> property</td></tr>
-  <tr><td>4</td><td>CC Eric and Alec</td><td><code>CONFIG.cc</code> on every send</td></tr>
-  <tr><td>5</td><td>Lone replies forwarded to Alec</td><td><code>forwardLoneReplies_</code> poller with dedup tracking</td></tr>
-  <tr><td>6</td><td>Log email in HubSpot</td><td><code>logToHubSpot_</code> — engagement associated via the contact id the notification already carries (search-by-email fallback)</td></tr>
-  <tr><td>7</td><td>Form submission in the body</td><td><code>buildFormBlock_</code> re-renders the parsed submission — sanitized, no internal URLs</td></tr>
-  <tr><td>8</td><td>Dynamic subject</td><td>Built from the "Type of manufacturing process" line</td></tr>
+  <tr><td>1</td><td>Enterprise-domain qualification</td><td><code>isEnterpriseDomain</code> — 25-domain free-mail blocklist (gmail, yahoo, hotmail, outlook, icloud, aol, proton, gmx, zoho, yandex, qq, comcast, att…)</td></tr>
+  <tr><td>2</td><td>Reply from Manuel's account</td><td>Mailgun send as <code>manuel@</code> on the domain's verified DKIM/SPF; <code>Reply-To</code> routes responses to his real inbox. (Not a literal mailbox send — the trade-off of having no mailbox access; deliverability is equivalent to the site's existing notifications.)</td></tr>
+  <tr><td>3</td><td>Exact wording + calendar link</td><td><code>buildReplyText/Html</code> — template verbatim from the original thread; link from the <code>ALEC_CALENDAR_LINK</code> env var</td></tr>
+  <tr><td>4</td><td>CC Eric and Alec</td><td>Fixed CC on every send</td></tr>
+  <tr><td>5</td><td>Lone replies forwarded to Alec</td><td><strong>Client-side:</strong> one-time Gmail filter in Manuel's mailbox (instructions in the Eric draft) — replies land where Kasandz has no access</td></tr>
+  <tr><td>6</td><td>Log email in HubSpot</td><td>Email engagement associated via the contactId from the upsert the handler just performed</td></tr>
+  <tr><td>7</td><td>Form submission in the body</td><td>Submission echoed from the raw form data — no internal URLs, no parsing</td></tr>
+  <tr><td>8</td><td>Dynamic subject</td><td>Built from the form's process field</td></tr>
 </table>
 </div>
 
-<h2><span class="num">7</span>Code walkthrough</h2>
-<p>The whole system is one file, <code>Code.gs</code>, plus a manifest. Function map:</p>
+<h2><span class="num">6</span>Code &amp; verification</h2>
+<p>One new module + a five-line wiring change, on <strong>PR #169</strong> (kasandzz/redstone-web, awaiting review — deployed dark on merge):</p>
 <div class="scroll">
 <table>
-  <tr><th>Function</th><th>Role</th></tr>
-  <tr><td><code>main()</code></td><td>Trigger entry — runs both pipelines every 5 minutes</td></tr>
-  <tr><td><code>setup()</code></td><td>One-time: creates the 5 labels + the time-driven trigger</td></tr>
-  <tr><td><code>processNewLeads_()</code></td><td>Find → parse → qualify (article-form + free-mail gates) → send → log → label; per-thread try/catch to <code>lead-auto/error</code></td></tr>
-  <tr><td><code>parseNotification_()</code></td><td>Parses the Mailgun text template: email, phone, name, company, project fields, description, HubSpot contact id. <strong>Verified against both live form types.</strong></td></tr>
-  <tr><td><code>sendAutoReply_()</code></td><td>Subject from process field; text + HTML bodies; CCs; labels the sent thread</td></tr>
-  <tr><td><code>buildFormBlock_()</code></td><td>Re-renders the submission for quoting — never the raw notification</td></tr>
-  <tr><td><code>forwardLoneReplies_()</code></td><td>Requirement-5 watcher; forwarded message IDs persisted, bounded at 2,000</td></tr>
-  <tr><td><code>logToHubSpot_()</code></td><td>Email engagement on the contact, id straight from the notification</td></tr>
-  <tr><td><code>test_parseLatest()</code></td><td><strong>Dry run</strong> — logs the parse, the gates, and the exact form block that would be quoted, without sending</td></tr>
+  <tr><th>Piece</th><th>Role</th></tr>
+  <tr><td><code>src/lib/autoreply.ts</code> (new)</td><td>Qualifier, template builders, Mailgun send, HubSpot engagement log. Exhaustive result states: <code>sent</code> / <code>skipped_disabled</code> / <code>skipped_freemail</code> / <code>skipped_no_process</code> / <code>failed</code></td></tr>
+  <tr><td><code>src/pages/api/quote.ts</code> (wired)</td><td>Calls <code>sendAutoReply</code> after notifications; logs the outcome; can never affect the response to the form</td></tr>
 </table>
 </div>
-<details>
-  <summary>Full source — Code.gs (v2)</summary>
-  <pre><code>/**
- * Redstone Manufacturing — lead-form auto-reply automation (RED-429) — v2
- *
- * v2 (2026-07-15): reworked against the LIVE redstone-web lead pipeline.
- * The new site (Astro/Vercel) sends its own notification via Mailgun
- * (src/lib/leads.ts) — this script parses THAT format, not the old
- * Gravity Forms email:
- *
- *   From:    Redstone Leads &lt;no-reply@redstonemanufacturing.com&gt;
- *   To:      sales@redstonemanufacturing.com
- *   Subject: New Website Lead - {Company} - {Process}
- *   Text body:
- *     New website lead — quote request via redstonemanufacturing.com
- *     {First Last}
- *     {jobtitle · company}          (line absent on article-form leads)
- *     Email: {lead email}
- *     Phone: {phone}                (optional)
- *     Project details
- *       Current stage of production: …
- *       Type of manufacturing process: …
- *       Main reason for estimate: …
- *       Estimated annual spend: …
- *       Target first shipment: …
- *       Current country of production: …
- *     Describe your part or product:
- *     {freeform}
- *     Attachments (n): …            (optional)
- *     View in HubSpot: …/record/0-1/{contactId}
- *
- * DEPLOYMENT CONSTRAINT: this script must run on the mailbox where BOTH
- * the sales@ notifications AND the lead&#x27;s replies to Manuel land — i.e.
- * manuel@redstonemanufacturing.com, with sales@ delivering to Manuel
- * (group membership or routing). The reply-forwarder cannot work from
- * any other account.
- *
- * Trigger: time-driven, every 5 minutes → main(). Setup: see README.md;
- * run setup() once after setting Script Properties.
- */
+<p><strong>Verified before PR:</strong> strict TypeScript check on the module; stubbed-fetch functional tests — all three gates short-circuit with zero network calls, and the full send produces the exact to/cc/from/reply-to/subject/body and HubSpot payload; full <code>astro build</code> passes.</p>
+<p><em>Source is production code in the private site repo and isn't embedded on this public page — see <a href="https://github.com/kasandzz/redstone-web/pull/169">kasandzz/redstone-web PR #169</a> (team access required).</em></p>
 
-var CONFIG = {
-  cc: &#x27;eric@redstonemanufacturing.com, alec@redstonemanufacturing.com&#x27;,
-  forwardTo: &#x27;alec@redstonemanufacturing.com&#x27;,
-  companyDomain: &#x27;redstonemanufacturing.com&#x27;,
-
-  // Leave &#x27;&#x27; when the script runs directly on Manuel&#x27;s account. If it runs
-  // on sales@ instead, set to Manuel&#x27;s address AND configure it as a
-  // verified send-as alias — but note the reply-forwarder then breaks
-  // (replies land in Manuel&#x27;s mailbox, not here). Prefer running on Manuel.
-  sendAs: &#x27;&#x27;,
-
-  // Article-page closing form (/api/lead) leads have no process field.
-  // Policy pending Eric&#x27;s decision — default OFF (no auto-reply, labeled).
-  replyToArticleFormLeads: false,
-
-  // Matches the Mailgun notification exactly (from + subject are fixed
-  // constants in redstone-web src/lib/leads.ts).
-  notificationQuery: &#x27;from:(no-reply@redstonemanufacturing.com) subject:&quot;New Website Lead&quot; -label:lead-auto/processed -label:lead-auto/error newer_than:3d&#x27;,
-
-  labels: {
-    processed: &#x27;lead-auto/processed&#x27;,
-    skipped: &#x27;lead-auto/skipped&#x27;,           // free-mail domain
-    skippedArticle: &#x27;lead-auto/skipped-articleform&#x27;,
-    sent: &#x27;lead-auto/sent&#x27;,                 // threads where we sent the auto-reply
-    error: &#x27;lead-auto/error&#x27;,
-  },
-
-  freemailDomains: [
-    &#x27;gmail.com&#x27;, &#x27;googlemail.com&#x27;, &#x27;yahoo.com&#x27;, &#x27;ymail.com&#x27;, &#x27;hotmail.com&#x27;,
-    &#x27;outlook.com&#x27;, &#x27;live.com&#x27;, &#x27;msn.com&#x27;, &#x27;icloud.com&#x27;, &#x27;me.com&#x27;, &#x27;mac.com&#x27;,
-    &#x27;aol.com&#x27;, &#x27;proton.me&#x27;, &#x27;protonmail.com&#x27;, &#x27;gmx.com&#x27;, &#x27;gmx.net&#x27;,
-    &#x27;zoho.com&#x27;, &#x27;mail.com&#x27;, &#x27;yandex.com&#x27;, &#x27;yandex.ru&#x27;, &#x27;qq.com&#x27;, &#x27;163.com&#x27;,
-    &#x27;126.com&#x27;, &#x27;comcast.net&#x27;, &#x27;verizon.net&#x27;, &#x27;att.net&#x27;, &#x27;sbcglobal.net&#x27;,
-  ],
-};
-
-// Labeled project-detail lines in the notification text body (exact labels
-// from redstone-web src/lib/leads.ts buildEmailText).
-var PROJECT_LABELS = [
-  &#x27;Current stage of production&#x27;,
-  &#x27;Type of manufacturing process&#x27;,
-  &#x27;Main reason for estimate&#x27;,
-  &#x27;Estimated annual spend&#x27;,
-  &#x27;Target first shipment&#x27;,
-  &#x27;Current country of production&#x27;,
-];
-
-// ---------------------------------------------------------------- main
-
-function main() {
-  processNewLeads_();
-  forwardLoneReplies_();
-}
-
-/** One-time setup: creates labels and the 5-minute trigger. */
-function setup() {
-  Object.keys(CONFIG.labels).forEach(function (k) {
-    getOrCreateLabel_(CONFIG.labels[k]);
-  });
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === &#x27;main&#x27;) ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger(&#x27;main&#x27;).timeBased().everyMinutes(5).create();
-  Logger.log(&#x27;Setup complete: labels created, 5-minute trigger installed.&#x27;);
-}
-
-// ------------------------------------------------- 1. new-lead pipeline
-
-function processNewLeads_() {
-  var threads = GmailApp.search(CONFIG.notificationQuery, 0, 20);
-  threads.forEach(function (thread) {
-    try {
-      var msg = thread.getMessages()[0];
-      var lead = parseNotification_(msg.getPlainBody());
-
-      if (!lead.email) {
-        throw new Error(&#x27;Could not parse lead email from notification &#x27; + msg.getId());
-      }
-
-      if (!lead.process &amp;&amp; !CONFIG.replyToArticleFormLeads) {
-        thread.addLabel(getOrCreateLabel_(CONFIG.labels.skippedArticle));
-        thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
-        Logger.log(&#x27;Skipped (article-form lead, no process): &#x27; + lead.email);
-        return;
-      }
-
-      if (!isEnterpriseDomain_(lead.email)) {
-        thread.addLabel(getOrCreateLabel_(CONFIG.labels.skipped));
-        thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
-        Logger.log(&#x27;Skipped (free-mail): &#x27; + lead.email);
-        return;
-      }
-
-      var sent = sendAutoReply_(lead, msg.getDate());
-      logToHubSpot_(lead, sent.subject, sent.textBody);
-
-      thread.addLabel(getOrCreateLabel_(CONFIG.labels.processed));
-      Logger.log(&#x27;Auto-reply sent to &#x27; + lead.email + &#x27; — &quot;&#x27; + sent.subject + &#x27;&quot;&#x27;);
-    } catch (e) {
-      thread.addLabel(getOrCreateLabel_(CONFIG.labels.error));
-      Logger.log(&#x27;ERROR on thread &#x27; + thread.getId() + &#x27;: &#x27; + e.message);
-    }
-  });
-}
-
-function sendAutoReply_(lead, formDate) {
-  var subject = (lead.process || &#x27;Manufacturing&#x27;) + &#x27; with Redstone Manufacturing&#x27;;
-  var firstName = firstName_(lead.name);
-  var calendarLink = scriptProp_(&#x27;ALEC_CALENDAR_LINK&#x27;) || &#x27;&#x27;;
-
-  // Rebuilt from parsed fields — NEVER quote the raw notification: it
-  // contains the internal HubSpot contact URL and ops footer.
-  var formBlock = buildFormBlock_(lead);
-  var dateStr = Utilities.formatDate(formDate, Session.getScriptTimeZone(), &quot;EEE, MMM d, yyyy &#x27;at&#x27; h:mm a&quot;);
-
-  var textBody =
-    &#x27;Hi &#x27; + firstName + &#x27;,\n\n&#x27; +
-    &quot;Thanks for reaching out. I&#x27;d like to schedule a time to chat to learn more.\n\n&quot; +
-    &#x27;When would be a good time to connect with you over a video call?\n\n&#x27; +
-    (calendarLink ? &#x27;You can also book a time directly here: &#x27; + calendarLink + &#x27;\n\n&#x27; : &#x27;&#x27;) +
-    &#x27;Manuel Ayala | Account Executive\n&#x27; +
-    &#x27;Redstone Manufacturing\n&#x27; +
-    &#x27;Direct: 330-632-3292\n&#x27; +
-    &#x27;redstonemanufacturing.com\n\n&#x27; +
-    &#x27;On &#x27; + dateStr + &#x27;:\n\n&#x27; +
-    quoteBlock_(formBlock);
-
-  var htmlBody =
-    &#x27;&lt;p&gt;Hi &#x27; + escapeHtml_(firstName) + &#x27;,&lt;/p&gt;&#x27; +
-    &quot;&lt;p&gt;Thanks for reaching out. I&#x27;d like to schedule a time to chat to learn more.&lt;/p&gt;&quot; +
-    &#x27;&lt;p&gt;When would be a good time to connect with you over a video call?&lt;/p&gt;&#x27; +
-    (calendarLink
-      ? &#x27;&lt;p&gt;You can also book a time directly here: &lt;a href=&quot;&#x27; + calendarLink + &#x27;&quot;&gt;&#x27; + calendarLink + &#x27;&lt;/a&gt;&lt;/p&gt;&#x27;
-      : &#x27;&#x27;) +
-    &#x27;&lt;p&gt;&lt;b&gt;Manuel Ayala&lt;/b&gt; | Account Executive&lt;br&gt;&#x27; +
-    &#x27;Redstone Manufacturing&lt;br&gt;&#x27; +
-    &#x27;Direct: 330-632-3292&lt;br&gt;&#x27; +
-    &#x27;&lt;a href=&quot;https://redstonemanufacturing.com&quot;&gt;redstonemanufacturing.com&lt;/a&gt;&lt;/p&gt;&#x27; +
-    &#x27;&lt;p&gt;On &#x27; + escapeHtml_(dateStr) + &#x27;:&lt;/p&gt;&#x27; +
-    &#x27;&lt;blockquote style=&quot;margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex;color:#555;&quot;&gt;&#x27; +
-    escapeHtml_(formBlock).replace(/\n/g, &#x27;&lt;br&gt;&#x27;) +
-    &#x27;&lt;/blockquote&gt;&#x27;;
-
-  var options = { cc: CONFIG.cc, htmlBody: htmlBody, name: &#x27;Manuel Ayala&#x27; };
-  if (CONFIG.sendAs) options.from = CONFIG.sendAs; // requires verified alias
-  GmailApp.sendEmail(lead.email, subject, textBody, options);
-
-  // Label the sent thread so the reply-forwarder can watch it.
-  Utilities.sleep(2000);
-  var sentThreads = GmailApp.search(&#x27;in:sent to:&#x27; + lead.email + &#x27; subject:&quot;&#x27; + subject + &#x27;&quot;&#x27;, 0, 1);
-  if (sentThreads.length) sentThreads[0].addLabel(getOrCreateLabel_(CONFIG.labels.sent));
-
-  return { subject: subject, textBody: textBody };
-}
-
-/** The lead&#x27;s submission, re-rendered like Manuel&#x27;s manual quote block. */
-function buildFormBlock_(lead) {
-  var lines = [&#x27;Tell us about your project&#x27;];
-  PROJECT_LABELS.forEach(function (label) {
-    if (lead.fields[label]) lines.push(label + &#x27;: &#x27; + lead.fields[label]);
-  });
-  if (lead.description) {
-    lines.push(&#x27;Describe your part or product:&#x27;);
-    lines.push(lead.description);
-  }
-  lines.push(&#x27;&#x27;);
-  lines.push(&#x27;Contact Information&#x27;);
-  if (lead.name) lines.push(&#x27;Name: &#x27; + lead.name);
-  if (lead.company) lines.push(&#x27;Company: &#x27; + lead.company);
-  lines.push(&#x27;Work Email: &#x27; + lead.email);
-  if (lead.phone) lines.push(&#x27;Phone Number: &#x27; + lead.phone);
-  return lines.join(&#x27;\n&#x27;);
-}
-
-// --------------------------------------------- 2. reply-forward watcher
-
-/**
- * For every auto-reply thread, forward to Alec any message from the lead
- * where Alec is not on To/Cc (i.e. the lead replied only to Manuel).
- */
-function forwardLoneReplies_() {
-  var threads = GmailApp.search(&#x27;label:&#x27; + CONFIG.labels.sent + &#x27; newer_than:60d&#x27;, 0, 50);
-  var store = PropertiesService.getScriptProperties();
-  var forwarded = JSON.parse(store.getProperty(&#x27;FORWARDED_IDS&#x27;) || &#x27;[]&#x27;);
-
-  threads.forEach(function (thread) {
-    thread.getMessages().forEach(function (msg) {
-      var id = msg.getId();
-      if (forwarded.indexOf(id) !== -1) return;
-
-      var from = (msg.getFrom() || &#x27;&#x27;).toLowerCase();
-      if (from.indexOf(&#x27;@&#x27; + CONFIG.companyDomain) !== -1) return; // our own mail
-
-      var recipients = ((msg.getTo() || &#x27;&#x27;) + &#x27;,&#x27; + (msg.getCc() || &#x27;&#x27;)).toLowerCase();
-      if (recipients.indexOf(CONFIG.forwardTo.toLowerCase()) !== -1) return; // Alec already on it
-
-      msg.forward(CONFIG.forwardTo, {
-        subject: &#x27;Fwd: &#x27; + msg.getSubject(),
-      });
-      forwarded.push(id);
-      Logger.log(&#x27;Forwarded lone reply &#x27; + id + &#x27; to &#x27; + CONFIG.forwardTo);
-    });
-  });
-
-  if (forwarded.length &gt; 2000) forwarded = forwarded.slice(-1000);
-  store.setProperty(&#x27;FORWARDED_IDS&#x27;, JSON.stringify(forwarded));
-}
-
-// ------------------------------------------------------ 3. HubSpot log
-
-/**
- * Logs the sent email as an Email engagement on the HubSpot contact.
- * The notification includes the contact id (the site already upserted the
- * contact), so normally no search is needed. Requires Script Property
- * HUBSPOT_TOKEN — the same private-app token redstone-web uses on Vercel.
- */
-function logToHubSpot_(lead, subject, textBody) {
-  var token = scriptProp_(&#x27;HUBSPOT_TOKEN&#x27;);
-  if (!token) {
-    Logger.log(&#x27;HUBSPOT_TOKEN not set — skipping HubSpot logging&#x27;);
-    return;
-  }
-
-  var contactId = lead.contactId || findContactByEmail_(lead.email, token);
-  if (!contactId) {
-    Logger.log(&#x27;No HubSpot contact found for &#x27; + lead.email + &#x27; — skipping log&#x27;);
-    return;
-  }
-
-  var payload = {
-    properties: {
-      hs_timestamp: new Date().toISOString(),
-      hs_email_direction: &#x27;EMAIL&#x27;,
-      hs_email_status: &#x27;SENT&#x27;,
-      hs_email_subject: subject,
-      hs_email_text: textBody,
-    },
-    associations: [{
-      to: { id: contactId },
-      types: [{ associationCategory: &#x27;HUBSPOT_DEFINED&#x27;, associationTypeId: 198 }], // email → contact
-    }],
-  };
-
-  hubspot_(&#x27;https://api.hubapi.com/crm/v3/objects/emails&#x27;, &#x27;post&#x27;, token, payload);
-}
-
-function findContactByEmail_(email, token) {
-  var search = hubspot_(&#x27;https://api.hubapi.com/crm/v3/objects/contacts/search&#x27;, &#x27;post&#x27;, token, {
-    filterGroups: [{ filters: [{ propertyName: &#x27;email&#x27;, operator: &#x27;EQ&#x27;, value: email }] }],
-    properties: [&#x27;email&#x27;],
-    limit: 1,
-  });
-  return (search.results &amp;&amp; search.results.length) ? search.results[0].id : null;
-}
-
-function hubspot_(url, method, token, payload) {
-  var resp = UrlFetchApp.fetch(url, {
-    method: method,
-    contentType: &#x27;application/json&#x27;,
-    headers: { Authorization: &#x27;Bearer &#x27; + token },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  });
-  var code = resp.getResponseCode();
-  if (code &gt;= 300) throw new Error(&#x27;HubSpot &#x27; + code + &#x27; on &#x27; + url + &#x27;: &#x27; + resp.getContentText().slice(0, 300));
-  return JSON.parse(resp.getContentText() || &#x27;{}&#x27;);
-}
-
-// -------------------------------------------------------- parsing utils
-
-/**
- * Parses the Mailgun notification&#x27;s plain-text body (format is a fixed
- * template in redstone-web src/lib/leads.ts buildEmailText — treat that
- * file as the spec; if it changes, update this parser).
- */
-function parseNotification_(body) {
-  var t = body.replace(/\r/g, &#x27;&#x27;);
-
-  var email = (t.match(/^Email:\s*([^\s@]+@[^\s@]+\.[^\s@]+)/mi) || [])[1] || null;
-  var phone = ((t.match(/^Phone:\s*(.+)$/mi) || [])[1] || &#x27;&#x27;).trim();
-  var contactId = (t.match(/View in HubSpot:\s*\S*\/(\d+)\s*$/mi) || [])[1] || null;
-
-  // Name = first non-empty line after the header; the optional next line
-  // is &quot;jobtitle · company&quot; (absent on article-form leads).
-  var name = &#x27;&#x27;, company = &#x27;&#x27;;
-  var lines = t.split(&#x27;\n&#x27;);
-  for (var i = 0; i &lt; lines.length; i++) {
-    if (/^New website lead/i.test(lines[i].trim())) {
-      var rest = [];
-      for (var j = i + 1; j &lt; lines.length &amp;&amp; rest.length &lt; 2; j++) {
-        var l = lines[j].trim();
-        if (!l) continue;
-        if (/^(Email|Phone|Project details):?/i.test(l)) break;
-        rest.push(l);
-      }
-      name = rest[0] || &#x27;&#x27;;
-      if (rest[1]) {
-        var parts = rest[1].split(&#x27;·&#x27;).map(function (p) { return p.trim(); });
-        company = parts[parts.length - 1];
-      }
-      break;
-    }
-  }
-
-  var fields = {};
-  PROJECT_LABELS.forEach(function (label) {
-    var m = t.match(new RegExp(&#x27;^\\s*&#x27; + escapeRe_(label) + &#x27;:\\s*(.+)$&#x27;, &#x27;mi&#x27;));
-    fields[label] = m ? m[1].trim() : &#x27;&#x27;;
-  });
-
-  var desc = &#x27;&#x27;;
-  var dm = t.match(/Describe your part or product:\s*\n([\s\S]*?)(?=\n\s*Attachments \(|\n\s*View in HubSpot:|$)/i);
-  if (dm) desc = dm[1].trim();
-
-  return {
-    email: email ? email.toLowerCase() : null,
-    phone: phone,
-    name: name,
-    company: company,
-    contactId: contactId,
-    process: fields[&#x27;Type of manufacturing process&#x27;] || &#x27;&#x27;,
-    fields: fields,
-    description: desc,
-  };
-}
-
-function isEnterpriseDomain_(email) {
-  var domain = email.split(&#x27;@&#x27;)[1];
-  return CONFIG.freemailDomains.indexOf(domain) === -1;
-}
-
-function firstName_(name) {
-  var first = (name || &#x27;&#x27;).trim().split(/\s+/)[0] || &#x27;there&#x27;;
-  return first.charAt(0).toUpperCase() + first.slice(1);
-}
-
-function quoteBlock_(text) {
-  return text.split(&#x27;\n&#x27;).map(function (l) { return &#x27;&gt; &#x27; + l; }).join(&#x27;\n&#x27;);
-}
-
-function getOrCreateLabel_(name) {
-  return GmailApp.getUserLabelByName(name) || GmailApp.createLabel(name);
-}
-
-function scriptProp_(key) {
-  return PropertiesService.getScriptProperties().getProperty(key);
-}
-
-function escapeRe_(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, &#x27;\\$&amp;&#x27;);
-}
-
-function escapeHtml_(s) {
-  return String(s).replace(/&amp;/g, &#x27;&amp;amp;&#x27;).replace(/&lt;/g, &#x27;&amp;lt;&#x27;).replace(/&gt;/g, &#x27;&amp;gt;&#x27;).replace(/&quot;/g, &#x27;&amp;quot;&#x27;);
-}
-
-// ------------------------------------------------------------- testing
-
-/** Dry run: parse the newest matching notification and log what WOULD be sent. */
-function test_parseLatest() {
-  var q = CONFIG.notificationQuery.replace(/-label:\S+\s*/g, &#x27;&#x27;);
-  var threads = GmailApp.search(q, 0, 1);
-  if (!threads.length) { Logger.log(&#x27;No matching notification email found.&#x27;); return; }
-  var msg = threads[0].getMessages()[0];
-  var lead = parseNotification_(msg.getPlainBody());
-  Logger.log(&#x27;Parsed: &#x27; + JSON.stringify({
-    email: lead.email, name: lead.name, company: lead.company,
-    phone: lead.phone, contactId: lead.contactId, process: lead.process,
-  }, null, 2));
-  Logger.log(&#x27;Fields: &#x27; + JSON.stringify(lead.fields, null, 2));
-  Logger.log(&#x27;Description: &#x27; + lead.description);
-  Logger.log(&#x27;Enterprise: &#x27; + (lead.email ? isEnterpriseDomain_(lead.email) : &#x27;n/a&#x27;));
-  Logger.log(&#x27;Article-form lead (would skip): &#x27; + (!lead.process &amp;&amp; !CONFIG.replyToArticleFormLeads));
-  Logger.log(&#x27;Subject would be: &#x27; + (lead.process || &#x27;Manufacturing&#x27;) + &#x27; with Redstone Manufacturing&#x27;);
-  Logger.log(&#x27;--- form block that would be quoted ---\n&#x27; + buildFormBlock_(lead));
-}
-</code></pre>
-</details>
-<details>
-  <summary>Manifest — appsscript.json</summary>
-  <pre><code>{
-  &quot;timeZone&quot;: &quot;America/Denver&quot;,
-  &quot;exceptionLogging&quot;: &quot;STACKDRIVER&quot;,
-  &quot;runtimeVersion&quot;: &quot;V8&quot;,
-  &quot;oauthScopes&quot;: [
-    &quot;https://mail.google.com/&quot;,
-    &quot;https://www.googleapis.com/auth/script.external_request&quot;,
-    &quot;https://www.googleapis.com/auth/script.scriptapp&quot;
-  ]
-}
-</code></pre>
-</details>
-
-<h2><span class="num">8</span>Deploy runbook</h2>
+<h2><span class="num">7</span>Go-live runbook</h2>
 <ol>
-  <li><strong>Confirm sales@ delivers into Manuel's inbox</strong> (Google Group membership or routing) — hard requirement, see §4 break 2</li>
-  <li>As Manuel (via Workspace admin): script.google.com → new project → paste <code>Code.gs</code> + <code>appsscript.json</code></li>
-  <li>Script Properties: <code>HUBSPOT_TOKEN</code> (reuse the site's existing private-app token; verify it has email-engagement write scope), <code>ALEC_CALENDAR_LINK</code></li>
-  <li>Run <code>test_parseLatest()</code> against a real notification; check parsed fields and the rendered quote block</li>
-  <li>Run <code>setup()</code> once (OAuth grant, labels, trigger)</li>
-  <li>End-to-end test: dummy <strong>enterprise</strong> submission + dummy <strong>gmail</strong> submission + one <strong>article-form</strong> submission → verify reply/CCs/subject/HubSpot log, free-mail skip, article skip; screenshot all three</li>
-  <li>Send draft + screenshots to Eric (due Fri 7/17)</li>
+  <li>Internal review of PR #169 + this page + the Eric draft</li>
+  <li>Send draft to Eric (due Fri 7/17) with the three asks: calendar link, the req-5 Gmail filter in Manuel's mailbox, article-form policy</li>
+  <li>On approval: merge PR #169 (deploys dark), set Vercel env <code>ALEC_CALENDAR_LINK</code>, then <code>AUTOREPLY_ENABLED=true</code></li>
+  <li>Live test: dummy enterprise-domain submission + dummy gmail submission → verify reply/CCs/subject/HubSpot log and the silent skip; screenshot for Eric</li>
+  <li>Eric-side: create the req-5 forwarding filter in Manuel's Gmail (instructions provided)</li>
 </ol>
 
+<h2><span class="num">8</span>Version history</h2>
+<div class="scroll">
+<table>
+  <tr><th>Ver</th><th>Date</th><th>What</th></tr>
+  <tr><td>v1</td><td>07/14</td><td>Apps Script on Manuel's mailbox, parser built from the old Gravity Forms notification quoted in the reference thread</td></tr>
+  <tr><td>v2</td><td>07/15</td><td>Compatibility review vs the live site found v1 would process zero leads (new Mailgun notification: different subject, recipient, labels, + internal HubSpot URL in body). Parser rebuilt against the site source and verified</td></tr>
+  <tr><td>v3</td><td>07/15</td><td><strong>Pivot:</strong> no sales@/Manuel mailbox credentials exist, so no Apps Script can be deployed by Kasandz. Auto-reply moved into the site's own pipeline (PR #169), dark-launched behind <code>AUTOREPLY_ENABLED</code>. Apps Script v2 kept as the client-deployable upgrade path (native Gmail threading + in-mailbox reply-forwarding) in <a href="https://github.com/leo26850/redstone-email-automation/blob/main/BUILD.md">BUILD.md</a></td></tr>
+</table>
+</div>
+
 <h2><span class="num">9</span>Open items</h2>
-<div class="callout open-item"><strong class="warn">Blocking go-live — four inputs:</strong>
+<div class="callout open-item"><strong class="warn">Before go-live:</strong>
 <ol>
-  <li><strong>Alec's calendar link</strong> — requested from Eric/Alec; the script gracefully omits the booking line until it's set</li>
-  <li><strong>sales@ → Manuel delivery</strong> — confirm the sales@ group/routing includes Manuel's inbox</li>
-  <li><strong>Article-form policy</strong> — should the lighter article-page quote form get auto-replies? Defaulted to <em>no</em> pending Eric</li>
-  <li><strong>HubSpot token scope</strong> — the site's existing token may need the email-engagement write scope added</li>
+  <li><strong>Internal review + send the Eric draft</strong> (due Fri 7/17)</li>
+  <li><strong>Alec's calendar link</strong> → Vercel env <code>ALEC_CALENDAR_LINK</code> (booking line is omitted until set)</li>
+  <li><strong>Req-5 Gmail filter</strong> in Manuel's mailbox — Eric-side, instructions in the draft</li>
+  <li><strong>Article-form policy</strong> — Eric's call; default is no auto-reply for the lighter article-page form</li>
+  <li><strong>Merge PR #169 + flip <code>AUTOREPLY_ENABLED</code></strong> after approval, then live test</li>
 </ol>
 </div>
 
 <h2><span class="num">10</span>Status</h2>
 <ul>
-  <li><span class="ok">✓</span> Architecture decided, full system written (2026-07-14)</li>
-  <li><span class="ok">✓</span> Manuel's verbatim template + CC list extracted from the source thread</li>
-  <li><span class="ok">✓</span> Plane RED-429 moved to In Progress with work-log</li>
-  <li><span class="ok">✓</span> <strong>v2:</strong> compatibility review against the live site pipeline; 4 breaks found and fixed; parser verified against both live form types (2026-07-15)</li>
-  <li><span class="ok">✓</span> Client-facing draft for Eric written (pending internal review)</li>
-  <li><span class="warn">○</span> Deploy + end-to-end test — blocked on the four open items above</li>
+  <li><span class="ok">✓</span> Architecture v1 + full Apps Script build (07/14)</li>
+  <li><span class="ok">✓</span> v2 compatibility review vs live site; parser rebuilt and verified (07/15)</li>
+  <li><span class="ok">✓</span> <strong>v3 pivot:</strong> in-site build complete — typechecked, functionally tested, site builds; <strong>PR #169 open</strong> (07/15)</li>
+  <li><span class="ok">✓</span> Plane RED-429 In Progress with full work-log trail</li>
+  <li><span class="ok">✓</span> Client-facing draft rewritten for v3 (pending internal review)</li>
   <li><span class="warn">○</span> Draft to Eric — due Fri 2026-07-17</li>
+  <li><span class="warn">○</span> Merge + env flip + live test — after Eric's approval</li>
 </ul>
 
 <footer>
-  RED-429 · Redstone Manufacturing lead-form auto-reply automation · Prepared by KAMG · v2, updated 2026-07-15 · Internal review page — lead PII redacted.
+  RED-429 · Redstone Manufacturing lead-form auto-reply automation · Prepared by KAMG · v3, updated 2026-07-15 · Internal review page — lead PII redacted.
 </footer>
 
 </div>
